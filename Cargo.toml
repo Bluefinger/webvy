@@ -1,0 +1,36 @@
+[package]
+name = "webvy"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+exclude = ["/.*"]
+rust-version = { workspace = true }
+
+[dependencies]
+smol.workspace = true
+env_logger = "0.11"
+webvy_app = { path = "webvy_app" }
+webvy_matterparser = { path = "webvy_matterparser" }
+
+[workspace]
+members = ["webvy_app", "webvy_core", "webvy_matterparser", "webvy_frontmatter"]
+resolver = "2"
+
+[workspace.package]
+authors = ["Gonçalo Rica Pais da Silva <bluefinger@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+rust-version = "1.77.0"
+
+[workspace.dependencies]
+smol = "2"
+bevy_ecs = { version = "0.13", default-features = false, features = ["multi-threaded"] }
+bevy_tasks = { version = "0.13", default-features = false, features = ["multi-threaded", "async-io"] }
+gray_matter = "0.2"
+pulldown-cmark = { version = "0.9" }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+tera = "1"
+toml = { version = "0.8", features = ["parse"] }

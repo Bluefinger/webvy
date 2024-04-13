@@ -1,0 +1,22 @@
+[package]
+name = "webvy_app"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+webvy_matterparser = { path = "../webvy_matterparser" }
+event-listener = "5"
+smol.workspace = true
+bevy_ecs.workspace = true
+bevy_tasks.workspace = true
+gray_matter.workspace = true
+log.workspace = true
+pulldown-cmark.workspace = true
+serde.workspace = true
+tera.workspace = true
+toml.workspace = true

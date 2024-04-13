@@ -1,0 +1,3 @@
+[files]
+content = "./content"
+output = "./public"
