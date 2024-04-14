@@ -1,4 +1,7 @@
-use std::{future::Future, sync::{atomic::AtomicU32, Arc}};
+use std::{
+    future::Future,
+    sync::{atomic::AtomicU32, Arc},
+};
 
 use bevy_ecs::system::{CommandQueue, Resource};
 use bevy_tasks::{IoTaskPool, Task};
@@ -79,7 +82,8 @@ impl DeferredGuard {
 
 impl Drop for DeferredGuard {
     fn drop(&mut self) {
-        self.waiting.fetch_sub(1, std::sync::atomic::Ordering::Release);
+        self.waiting
+            .fetch_sub(1, std::sync::atomic::Ordering::Release);
         self.finished.notify(1.relaxed());
     }
 }

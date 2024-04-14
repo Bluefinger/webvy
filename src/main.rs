@@ -1,6 +1,6 @@
 use webvy_app::{
-    processor::{ConfigurationProcessor, MarkdownFrontMatter, MarkdownProcessor, TeraProcessor},
     app::ProcessorApp,
+    processor::{ConfigurationProcessor, MarkdownFrontMatter, MarkdownProcessor, TeraProcessor},
 };
 
 fn main() {

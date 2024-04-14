@@ -22,39 +22,37 @@ impl Parser {
     pub fn parse(&self, page: &str) -> Option<ParsedData> {
         page.strip_prefix(self.delimiter.as_str())
             .map(|matter| matter.split_terminator(self.delimiter.as_str()))
-            .map(
-                |mut split_text| {
-                    let matter = split_text
-                        .next()
-                        .and_then(|matter| toml::from_str(matter).ok());
+            .map(|mut split_text| {
+                let matter = split_text
+                    .next()
+                    .and_then(|matter| toml::from_str(matter).ok());
 
-                    let content = split_text.next();
+                let content = split_text.next();
 
-                    let (excerpt, content) = content
-                        .zip(self.excerpt.as_ref())
-                        .and_then(|(text, delimiter)| text.split_once(delimiter))
-                        .map_or_else(
-                            || {
-                                (
-                                    None,
-                                    content.map_or_else(
-                                        || page.trim().to_string(),
-                                        |content| content.trim().to_string(),
-                                    ),
-                                )
-                            },
-                            |(excerpt, content)| {
-                                (Some(excerpt.trim().to_string()), content.trim().to_string())
-                            },
-                        );
+                let (excerpt, content) = content
+                    .zip(self.excerpt.as_ref())
+                    .and_then(|(text, delimiter)| text.split_once(delimiter))
+                    .map_or_else(
+                        || {
+                            (
+                                None,
+                                content.map_or_else(
+                                    || page.trim().to_string(),
+                                    |content| content.trim().to_string(),
+                                ),
+                            )
+                        },
+                        |(excerpt, content)| {
+                            (Some(excerpt.trim().to_string()), content.trim().to_string())
+                        },
+                    );
 
-                    ParsedData {
-                        matter,
-                        excerpt,
-                        content,
-                    }
-                },
-            )
+                ParsedData {
+                    matter,
+                    excerpt,
+                    content,
+                }
+            })
     }
 }
 

@@ -1628,6 +1628,9 @@ dependencies = [
 [[package]]
 name = "webvy_core"
 version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+]
 
 [[package]]
 name = "webvy_frontmatter"

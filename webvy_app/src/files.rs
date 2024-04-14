@@ -33,13 +33,18 @@ pub async fn read_from_directory(
     path: impl AsRef<Path>,
 ) -> std::io::Result<Vec<(PathBuf, String)>> {
     let io = IoTaskPool::get();
-    
+
     // Concurrently obtain files
-    let tasks = find_all_files_in_directory(path.as_ref()).await?.into_iter()
+    let tasks = find_all_files_in_directory(path.as_ref())
+        .await?
+        .into_iter()
         .map(|file| io.spawn(read_file(file)))
         .collect::<Vec<Task<std::io::Result<(PathBuf, String)>>>>();
 
-    iter(tasks.into_iter()).then(|task| task).try_collect().await
+    iter(tasks.into_iter())
+        .then(|task| task)
+        .try_collect()
+        .await
 }
 
 async fn read_file(file: PathBuf) -> std::io::Result<(PathBuf, String)> {

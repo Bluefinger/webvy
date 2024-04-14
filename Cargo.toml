@@ -26,7 +26,7 @@ rust-version = "1.77.0"
 
 [workspace.dependencies]
 smol = "2"
-bevy_ecs = { version = "0.13", default-features = false, features = ["multi-threaded"] }
+bevy_ecs = { version = "0.13", default-features = false }
 bevy_tasks = { version = "0.13", default-features = false, features = ["multi-threaded", "async-io"] }
 gray_matter = "0.2"
 pulldown-cmark = { version = "0.9" }

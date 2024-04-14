@@ -11,20 +11,20 @@ use bevy_ecs::{
     schedule::IntoSystemConfigs,
     system::{
         CommandQueue, Commands, EntityCommands, In, IntoSystem, ParallelCommands, Query, Res,
-        ResMut, Resource,
+        Resource,
     },
     world::World,
 };
 use bevy_tasks::{ComputeTaskPool, Scope};
-use webvy_matterparser::Parser as FrontMatterParser;
 use log::{error, info, trace};
 use pulldown_cmark::{html, Options, Parser};
 use toml::Value;
+use webvy_matterparser::Parser as FrontMatterParser;
 
 use crate::{
     app::{Load, Process, ProcessorApp},
     deferred::DeferredTask,
-    file::{FileName, FilePathBuf, HtmlBody, PageType},
+    file::{FileName, FilePath, HtmlBody, PageType},
     files::read_from_directory,
     front_matter::{Date, Draft, Title},
     traits::{Extractor, ProcessorPlugin},
@@ -58,9 +58,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                 let data = read_from_directory(path).await?;
 
                 command_queue.push(move |world: &mut World| {
-                    let mut file_data = world.resource_mut::<MarkdownFiles>();
-
-                    file_data.0 = data;
+                    world.insert_resource(MarkdownFiles(data));
                 });
 
                 scope.send(command_queue);
@@ -106,7 +104,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                         MarkdownPost,
                         MarkdownBody(markdown.take_content()),
                         MarkdownFrontMatter(markdown.take_matter()),
-                        FilePathBuf(path),
+                        FilePath(path),
                     ))
                 })
             });
@@ -130,17 +128,17 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
     fn parse_frontmatter(
         mut commands: Commands,
         q_markdown: Query<
-            (Entity, &MarkdownFrontMatter, &FilePathBuf),
+            (Entity, &MarkdownFrontMatter, &FilePath),
             (With<MarkdownPost>, Without<MarkdownParsed>),
         >,
     ) {
         info!("Parsing frontmatter from loaded markdown pages");
         q_markdown
             .iter()
-            .for_each(|(entity, front_matter, FilePathBuf(path))| {
+            .for_each(|(entity, front_matter, FilePath(path))| {
                 let mut post = commands.entity(entity);
 
-                front_matter.extract_path(&mut post, path);
+                front_matter.extract_from_path(&mut post, path);
                 front_matter.extract(&mut post);
 
                 post.insert(MarkdownParsed);
@@ -164,15 +162,12 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
             });
     }
 
-    fn index_sections(
-        mut commands: Commands,
-        q_pages: Query<(Entity, &FilePathBuf)>,
-        mut section_index: ResMut<SectionIndex>,
-    ) {
+    fn index_sections(mut commands: Commands, q_pages: Query<(Entity, &FilePath)>) {
+        let mut index: HashMap<PathBuf, Vec<Entity>> = HashMap::new();
         info!("Indexing pages into sections");
         for (page, path) in q_pages.iter() {
             let dir = path.0.parent().unwrap();
-            let indexed = section_index.0.entry(dir.to_path_buf()).or_default();
+            let indexed = index.entry(dir.to_path_buf()).or_default();
             let is_root = dir.to_str().is_some_and(str::is_empty);
 
             let page_type = if !path.0.ends_with("_index.md") {
@@ -180,16 +175,18 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                 if is_root {
                     PageType::Page
                 } else {
-                    PageType::Post
+                    PageType::Post(dir.to_str().unwrap().into())
                 }
             } else if is_root {
                 PageType::Index
             } else {
-                PageType::Section
+                PageType::Section(dir.to_str().unwrap().into())
             };
 
             commands.entity(page).insert(page_type);
         }
+
+        commands.insert_resource(SectionIndex(index));
     }
 }
 
@@ -204,9 +201,7 @@ impl<T: Extractor + Send + Sync + 'static> ProcessorPlugin for MarkdownProcessor
                     Self::convert_markdown_to_html.after(Self::parse_markdown),
                     Self::index_sections.after(Self::parse_markdown),
                 ),
-            )
-            .init_resource::<MarkdownFiles>()
-            .init_resource::<SectionIndex>();
+            );
     }
 }
 
@@ -246,7 +241,7 @@ impl Extractor for MarkdownFrontMatter {
         }
     }
 
-    fn extract_path(&self, entity: &mut EntityCommands, path: &Path) {
+    fn extract_from_path(&self, entity: &mut EntityCommands, path: &Path) {
         if let Some(file_name) = path
             .file_name()
             .and_then(|file_name| file_name.to_str())

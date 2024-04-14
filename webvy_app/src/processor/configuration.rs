@@ -10,8 +10,8 @@ use smol::fs::read_to_string;
 use toml::{Table, Value};
 
 use crate::{
-    deferred::DeferredTask,
     app::{Preload, ProcessorApp},
+    deferred::DeferredTask,
     traits::ProcessorPlugin,
 };
 

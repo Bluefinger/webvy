@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::{
+    component::Component,
+    entity::Entity,
     query::With,
-    system::{In, IntoSystem, Query, Res, Resource},
+    schedule::IntoSystemConfigs,
+    system::{Commands, In, IntoSystem, Query, Res, Resource},
 };
 use bevy_tasks::Task;
 use log::{error, info, trace};
@@ -16,7 +19,7 @@ use tera::Tera;
 use crate::{
     app::Write,
     deferred::DeferredTask,
-    file::{FileName, FilePathBuf, HtmlBody, PageType},
+    file::{FileName, FilePath, HtmlBody, PageType},
     traits::ProcessorPlugin,
 };
 
@@ -29,14 +32,36 @@ pub struct TeraProcessor {
 
 impl TeraProcessor {
     pub fn new() -> Self {
-        Self {
-            templates: Tera::new("templates/**/*").unwrap(),
+        let templates = Tera::new("templates/**/*").unwrap();
+
+        Self { templates }
+    }
+
+    fn index_templates(
+        mut commands: Commands,
+        q_pages: Query<(Entity, &PageType, Option<&TemplateName>)>,
+    ) {
+        for (page, page_type, template) in q_pages.iter() {
+            match (template, page_type.has_parent_name()) {
+                (None, Some(parent)) => {
+                    let mut path = PathBuf::new();
+                    path.push(parent);
+                    path.push(format!("{}.html", page_type));
+                    commands.entity(page).insert(TemplateName(path));
+                }
+                (None, None) => {
+                    let mut path = PathBuf::new();
+                    path.push(format!("{}.html", page_type));
+                    commands.entity(page).insert(TemplateName(path));
+                }
+                _ => {}
+            };
         }
     }
 
     fn process_pages(
         q_config: Query<&OutputDir, With<FileConfig>>,
-        q_pages: Query<(&HtmlBody, &FileName, &FilePathBuf, &PageType)>,
+        q_pages: Query<(&TemplateName, &HtmlBody, &FileName, &FilePath)>,
         tera: Res<Self>,
     ) -> Vec<(PathBuf, String)> {
         let dir = q_config.single().path();
@@ -45,14 +70,17 @@ impl TeraProcessor {
 
         q_pages
             .iter()
-            .map(|(html, file_name, path, page_type)| {
+            .map(|(template_name, html, file_name, path)| {
                 let output_path = dir.join(path.0.with_file_name(&file_name.0));
 
                 let mut context = tera::Context::new();
 
                 context.insert("content", &html.0);
 
-                let content = tera.templates.render(page_type.into(), &context).unwrap();
+                let content = tera
+                    .templates
+                    .render(template_name.0.to_str().unwrap(), &context)
+                    .unwrap();
 
                 (output_path, content)
             })
@@ -113,8 +141,14 @@ impl TeraProcessor {
 
 impl ProcessorPlugin for TeraProcessor {
     fn register(self, app: &mut crate::app::ProcessorApp) {
-        app.insert_resource(self)
-            .add_systems(Write, Self::process_pages.pipe(Self::write_to_disk));
+        app.insert_resource(self).add_systems(
+            Write,
+            (
+                Self::index_templates,
+                Self::process_pages.pipe(Self::write_to_disk),
+            )
+                .chain(),
+        );
     }
 }
 
@@ -123,3 +157,6 @@ impl Default for TeraProcessor {
         Self::new()
     }
 }
+
+#[derive(Debug, Component)]
+pub struct TemplateName(PathBuf);

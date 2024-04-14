@@ -12,7 +12,7 @@ rust-version.workspace = true
 webvy_matterparser = { path = "../webvy_matterparser" }
 event-listener = "5"
 smol.workspace = true
-bevy_ecs.workspace = true
+bevy_ecs = { workspace = true, features = ["multi-threaded"] }
 bevy_tasks.workspace = true
 gray_matter.workspace = true
 log.workspace = true
