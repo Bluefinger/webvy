@@ -9,14 +9,10 @@ use bevy_ecs::{
     entity::Entity,
     query::{With, Without},
     schedule::IntoSystemConfigs,
-    system::{
-        CommandQueue, Commands, EntityCommands, In, IntoSystem, ParallelCommands, Query, Res,
-        Resource,
-    },
+    system::{CommandQueue, Commands, EntityCommands, ParallelCommands, Query, Res, Resource},
     world::World,
 };
-use bevy_tasks::{ComputeTaskPool, Scope};
-use log::{error, info, trace};
+use log::{error, info};
 use pulldown_cmark::{html, Options, Parser};
 use toml::Value;
 use webvy_matterparser::Parser as FrontMatterParser;
@@ -55,10 +51,17 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
 
                 info!("Reading markdown content from disk");
 
-                let data = read_from_directory(path).await?;
+                let data = read_from_directory(path.as_path()).await?;
 
                 command_queue.push(move |world: &mut World| {
-                    world.insert_resource(MarkdownFiles(data));
+                    world.spawn_batch(data.into_iter().scan(
+                        path,
+                        |origin, (page_path, content)| {
+                            let page_path = page_path.strip_prefix(origin).unwrap().to_path_buf();
+
+                            Some((FilePath(page_path), MarkdownPost(content)))
+                        },
+                    ));
                 });
 
                 scope.send(command_queue);
@@ -69,60 +72,23 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
     }
 
     fn parse_markdown(
-        bodies: Res<MarkdownFiles>,
-        mut commands: Commands,
-        q_config: Query<&ContentDir, With<FileConfig>>,
-    ) -> std::io::Result<()> {
-        let pool = ComputeTaskPool::get();
+        commands: ParallelCommands,
+        q_pages: Query<(Entity, &MarkdownPost, &FilePath)>,
+    ) {
         let matter = FrontMatterParser::default();
-        let config = q_config.single();
 
-        let posts = pool.scope(|s: &Scope<Result<_, std::io::Error>>| {
-            info!(
-                "Parsing markdown content. {} pages to render",
-                bodies.0.len()
-            );
-            bodies.0.iter().for_each(|(path, body)| {
-                let matter = &matter;
-                let origin = config.path();
-                s.spawn(async move {
-                    let mut markdown = matter.parse(body).ok_or_else(|| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "Unable to parse markdown frontmatter",
-                        )
-                    })?;
-
-                    let path = path
-                        .strip_prefix(origin)
-                        .map_err(std::io::Error::other)?
-                        .to_path_buf();
-
-                    trace!("Page: {}", path.as_path().display());
-
-                    Ok((
-                        MarkdownPost,
+        q_pages.par_iter().for_each(|(page, content, path)| {
+            if let Some(mut markdown) = matter.parse(&content.0) {
+                commands.command_scope(move |mut commands| {
+                    commands.entity(page).insert((
                         MarkdownBody(markdown.take_content()),
                         MarkdownFrontMatter(markdown.take_matter()),
-                        FilePath(path),
-                    ))
-                })
-            });
+                    ));
+                });
+            } else {
+                error!("Couldn't parse page: {}", path.0.display());
+            }
         });
-
-        commands.spawn_batch(
-            posts
-                .into_iter()
-                .collect::<Result<Vec<_>, std::io::Error>>()?,
-        );
-
-        Ok(())
-    }
-
-    fn handle_io_error(In(err): In<std::io::Result<()>>) {
-        if let Err(e) = err {
-            error!("Error parsing markdown: {}", e);
-        }
     }
 
     fn parse_frontmatter(
@@ -196,7 +162,7 @@ impl<T: Extractor + Send + Sync + 'static> ProcessorPlugin for MarkdownProcessor
             .add_systems(
                 Process,
                 (
-                    Self::parse_markdown.pipe(Self::handle_io_error),
+                    Self::parse_markdown,
                     Self::parse_frontmatter.after(Self::parse_markdown),
                     Self::convert_markdown_to_html.after(Self::parse_markdown),
                     Self::index_sections.after(Self::parse_markdown),
@@ -262,13 +228,10 @@ impl Extractor for MarkdownFrontMatter {
 struct MarkdownBody(String);
 
 #[derive(Debug, Component)]
-pub struct MarkdownPost;
+pub struct MarkdownPost(String);
 
 #[derive(Debug, Component)]
 struct MarkdownParsed;
 
 #[derive(Debug, Default, Resource)]
 pub struct SectionIndex(pub HashMap<PathBuf, Vec<Entity>>);
-
-#[derive(Debug, Default, Resource)]
-struct MarkdownFiles(Vec<(PathBuf, String)>);
