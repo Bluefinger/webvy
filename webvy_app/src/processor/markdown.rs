@@ -12,7 +12,7 @@ use bevy_ecs::{
     system::{CommandQueue, Commands, EntityCommands, ParallelCommands, Query, Res, Resource},
     world::World,
 };
-use log::{error, info};
+use log::{error, info, trace};
 use pulldown_cmark::{html, Options, Parser};
 use toml::Value;
 use webvy_matterparser::Parser as FrontMatterParser;
@@ -59,6 +59,8 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                         |origin, (page_path, content)| {
                             let page_path = page_path.strip_prefix(origin).unwrap().to_path_buf();
 
+                            trace!("Spawning {}", page_path.display());
+
                             Some((FilePath(page_path), MarkdownPost(content)))
                         },
                     ));
@@ -71,14 +73,16 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
             .detach();
     }
 
-    fn parse_markdown(
+    fn parse_page_format(
         commands: ParallelCommands,
         q_pages: Query<(Entity, &MarkdownPost, &FilePath)>,
     ) {
+        info!("Parsing the page format into front matter and body components");
         let matter = FrontMatterParser::default();
 
         q_pages.par_iter().for_each(|(page, content, path)| {
             if let Some(mut markdown) = matter.parse(&content.0) {
+                trace!("Parsing markdown: {}", path.0.display());
                 commands.command_scope(move |mut commands| {
                     commands.entity(page).insert((
                         MarkdownBody(markdown.take_content()),
@@ -149,6 +153,8 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                 PageType::Section(dir.to_str().unwrap().into())
             };
 
+            trace!("{} indexed as {}", path.0.display(), page_type);
+
             commands.entity(page).insert(page_type);
         }
 
@@ -162,10 +168,12 @@ impl<T: Extractor + Send + Sync + 'static> ProcessorPlugin for MarkdownProcessor
             .add_systems(
                 Process,
                 (
-                    Self::parse_markdown,
-                    Self::parse_frontmatter.after(Self::parse_markdown),
-                    Self::convert_markdown_to_html.after(Self::parse_markdown),
-                    Self::index_sections.after(Self::parse_markdown),
+                    (
+                        Self::parse_page_format,
+                        (Self::parse_frontmatter, Self::convert_markdown_to_html),
+                    )
+                        .chain(),
+                    Self::index_sections,
                 ),
             );
     }

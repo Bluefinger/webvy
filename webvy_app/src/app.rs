@@ -29,6 +29,9 @@ pub struct Load;
 pub struct Process;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ScheduleLabel)]
+pub struct PostProcess;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ScheduleLabel)]
 pub struct Write;
 
 impl ProcessorApp {
@@ -66,6 +69,11 @@ impl ProcessorApp {
         let mut process = Schedule::new(Process);
         process.set_executor_kind(ExecutorKind::MultiThreaded);
 
+        // Heavy CPU processing should be happening here with little if any
+        // IO occuring.
+        let mut postprocess = Schedule::new(PostProcess);
+        postprocess.set_executor_kind(ExecutorKind::MultiThreaded);
+
         // Write schedule should be more focused around spawning io tasks
         // for outputting the results to disk storage. Therefore there's
         // little need to MT the systems here as the concurrency will occur
@@ -77,12 +85,14 @@ impl ProcessorApp {
             preload.label(),
             load.label(),
             process.label(),
+            postprocess.label(),
             write.label(),
         ];
 
         world.add_schedule(preload);
         world.add_schedule(load);
         world.add_schedule(process);
+        world.add_schedule(postprocess);
         world.add_schedule(write);
 
         (world, schedules)

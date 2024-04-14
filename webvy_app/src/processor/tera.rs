@@ -4,7 +4,6 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     query::With,
-    schedule::IntoSystemConfigs,
     system::{Commands, In, IntoSystem, Query, Res, Resource},
 };
 use bevy_tasks::Task;
@@ -17,7 +16,7 @@ use smol::{
 use tera::Tera;
 
 use crate::{
-    app::Write,
+    app::{PostProcess, Write},
     deferred::DeferredTask,
     file::{FileName, FilePath, HtmlBody, PageType},
     traits::ProcessorPlugin,
@@ -141,14 +140,9 @@ impl TeraProcessor {
 
 impl ProcessorPlugin for TeraProcessor {
     fn register(self, app: &mut crate::app::ProcessorApp) {
-        app.insert_resource(self).add_systems(
-            Write,
-            (
-                Self::index_templates,
-                Self::process_pages.pipe(Self::write_to_disk),
-            )
-                .chain(),
-        );
+        app.insert_resource(self)
+            .add_systems(PostProcess, Self::index_templates)
+            .add_systems(Write, Self::process_pages.pipe(Self::write_to_disk));
     }
 }
 
