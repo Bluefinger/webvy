@@ -6,6 +6,7 @@ use std::{
 use bevy_ecs::system::{CommandQueue, Resource};
 use bevy_tasks::{IoTaskPool, Task};
 use event_listener::{Event, IntoNotification};
+use log::trace;
 use smol::channel::Sender;
 
 #[derive(Debug, Resource)]
@@ -84,7 +85,9 @@ impl Drop for DeferredGuard {
     fn drop(&mut self) {
         self.waiting
             .fetch_sub(1, std::sync::atomic::Ordering::Release);
+        trace!("{} listeners", self.finished.total_listeners());
         self.finished.notify(1.relaxed());
+        trace!("1 listener notified: {}", self.finished.is_notified());
     }
 }
 

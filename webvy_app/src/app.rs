@@ -138,9 +138,7 @@ impl ProcessorApp {
             self.world.run_schedule(schedule);
 
             // Local tasks for the schedule MUST be exhausted before we can proceed.
-            compute.with_local_executor(|cex| {
-                io.with_local_executor(|iex| while cex.try_tick() || iex.try_tick() {});
-            });
+            compute.with_local_executor(|cex| while cex.try_tick() {});
 
             // Remaining tasks on other threads
             let deferred_actions = self.world.resource::<DeferredTask>().waiting();
@@ -149,17 +147,35 @@ impl ProcessorApp {
 
             if deferred_actions > 0 {
                 trace!(target: "executor", "Waiting for async processes to finish");
-                for _ in 0..deferred_actions {
-                    let listener = self.finished.listen();
-                    listener.wait();
-                    trace!(target: "executor", "One process finished!");
-                }
-                trace!(target: "executor", "All async processes finished!");
-            }
 
-            trace!(target: "executor", "Apply queued deferred commands before proceeding with next schedule");
-            while let Ok(mut commands) = self.deferred.try_recv() {
-                commands.apply(&mut self.world);
+                for _ in 0..deferred_actions {
+                    trace!(target: "executor", "Listening for a notification");
+                    loop {
+                        let listener = self.finished.listen();
+
+                        // Tick the local executor in case we are waiting for something there
+                        io.with_local_executor(|iex| while iex.try_tick() {});
+
+                        // Timeout so we can yield the main thread for ticking the local executor in case the task
+                        // is delayed there.
+                        if listener
+                            .wait_timeout(std::time::Duration::from_millis(100))
+                            .is_some()
+                        {
+                            trace!(target: "executor", "Received notification! Deferred task finished");
+                            break;
+                        }
+                    }
+                }
+
+                trace!(target: "executor", "All async processes finished!");
+
+                trace!(target: "executor", "Apply queued deferred commands before proceeding with next schedule");
+                let mut deferred_queue = CommandQueue::default();
+                while let Ok(mut commands) = self.deferred.try_recv() {
+                    deferred_queue.append(&mut commands);
+                }
+                deferred_queue.apply(&mut self.world);
             }
         }
     }

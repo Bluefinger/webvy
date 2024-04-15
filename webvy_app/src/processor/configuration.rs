@@ -26,6 +26,11 @@ impl ConfigurationProcessor {
     fn init_config(config_path: Res<Self>, deferred: Res<DeferredTask>) {
         let path = config_path.0.to_path_buf();
 
+        deferred.scoped_task_local(|_| async {
+            smol::Timer::after(std::time::Duration::from_secs(1)).await;
+            smol::Timer::after(std::time::Duration::from_secs(1)).await;
+        }).detach();
+
         deferred
             .scoped_task(|scope| async move {
                 info!("Reading and loading configuration");
