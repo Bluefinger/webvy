@@ -11,22 +11,31 @@ pub struct FilePath(pub PathBuf);
 #[derive(Debug, Component, Clone)]
 pub struct HtmlBody(pub String);
 
-#[derive(Debug, Component, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Component, Clone)]
+pub struct SectionName(pub Box<str>);
+
+#[derive(Debug, Component, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum PageType {
     Index,
     Page,
-    Section(Box<str>),
-    Post(Box<str>),
+    Section,
+    Post,
 }
 
-impl PageType {
-    pub fn has_parent_name(&self) -> Option<&str> {
-        match self {
-            PageType::Index => None,
-            PageType::Page => None,
-            PageType::Section(name) => Some(name.as_ref()),
-            PageType::Post(name) => Some(name.as_ref()),
-        }
+pub(crate) struct EnumeratedSections(PathBuf);
+
+impl EnumeratedSections {
+    pub fn new(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    pub fn into_page_type_bundles(self) -> Option<[(PageType, SectionName); 2]> {
+        let name: Box<str> = self.0.file_stem()?.to_str()?.into();
+
+        Some([
+            (PageType::Post, SectionName(name.clone())),
+            (PageType::Section, SectionName(name)),
+        ])
     }
 }
 
@@ -35,8 +44,8 @@ impl From<&PageType> for &'static str {
         match value {
             PageType::Index => "index",
             PageType::Page => "page",
-            PageType::Section(_) => "section",
-            PageType::Post(_) => "post",
+            PageType::Section => "section",
+            PageType::Post => "post",
         }
     }
 }

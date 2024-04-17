@@ -20,8 +20,8 @@ use webvy_matterparser::Parser as FrontMatterParser;
 use crate::{
     app::{Load, Process, ProcessorApp},
     deferred::DeferredTask,
-    file::{FileName, FilePath, HtmlBody, PageType},
-    files::read_from_directory,
+    file::{FileName, FilePath, HtmlBody},
+    files::read_all_from_directory,
     front_matter::{Date, Draft, Title},
     traits::{Extractor, ProcessorPlugin},
 };
@@ -39,7 +39,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
         }
     }
 
-    fn read_directory_task(
+    fn read_content_directory_task(
         q_config: Query<&ContentDir, With<FileConfig>>,
         deferred: Res<DeferredTask>,
     ) {
@@ -51,7 +51,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
 
                 info!("Reading markdown content from disk");
 
-                let data = read_from_directory(path.as_path()).await?;
+                let data = read_all_from_directory(path.as_path()).await?;
 
                 command_queue.push(move |world: &mut World| {
                     world.spawn_batch(data.into_iter().scan(
@@ -131,50 +131,18 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                 });
             });
     }
-
-    fn index_sections(mut commands: Commands, q_pages: Query<(Entity, &FilePath)>) {
-        let mut index: HashMap<PathBuf, Vec<Entity>> = HashMap::new();
-        info!("Indexing pages into sections");
-        for (page, path) in q_pages.iter() {
-            let dir = path.0.parent().unwrap();
-            let indexed = index.entry(dir.to_path_buf()).or_default();
-            let is_root = dir.to_str().is_some_and(str::is_empty);
-
-            let page_type = if !path.0.ends_with("_index.md") {
-                indexed.push(page);
-                if is_root {
-                    PageType::Page
-                } else {
-                    PageType::Post(dir.to_str().unwrap().into())
-                }
-            } else if is_root {
-                PageType::Index
-            } else {
-                PageType::Section(dir.to_str().unwrap().into())
-            };
-
-            trace!("{} indexed as {}", path.0.display(), page_type);
-
-            commands.entity(page).insert(page_type);
-        }
-
-        commands.insert_resource(SectionIndex(index));
-    }
 }
 
 impl<T: Extractor + Send + Sync + 'static> ProcessorPlugin for MarkdownProcessor<T> {
     fn register(self, app: &mut ProcessorApp) {
-        app.add_systems(Load, Self::read_directory_task)
+        app.add_systems(Load, Self::read_content_directory_task)
             .add_systems(
                 Process,
                 (
-                    (
-                        Self::parse_page_format,
-                        (Self::parse_frontmatter, Self::convert_markdown_to_html),
-                    )
-                        .chain(),
-                    Self::index_sections,
-                ),
+                    Self::parse_page_format,
+                    (Self::parse_frontmatter, Self::convert_markdown_to_html),
+                )
+                    .chain(),
             );
     }
 }

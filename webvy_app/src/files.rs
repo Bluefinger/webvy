@@ -29,7 +29,7 @@ async fn find_all_files_in_directory(path: &Path) -> std::io::Result<Vec<PathBuf
     Ok(to_visit)
 }
 
-pub async fn read_from_directory(
+pub async fn read_all_from_directory(
     path: impl AsRef<Path>,
 ) -> std::io::Result<Vec<(PathBuf, String)>> {
     let io = IoTaskPool::get();
