@@ -14,9 +14,11 @@ event-listener = "5"
 smol.workspace = true
 bevy_ecs = { workspace = true, features = ["multi-threaded"] }
 bevy_tasks.workspace = true
+futures-concurrency.workspace = true
 gray_matter.workspace = true
 log.workspace = true
 pulldown-cmark.workspace = true
 serde.workspace = true
 tera.workspace = true
+thiserror.workspace = true
 toml.workspace = true

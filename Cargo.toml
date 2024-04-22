@@ -28,9 +28,11 @@ rust-version = "1.77.0"
 smol = "2"
 bevy_ecs = { version = "0.13", default-features = false }
 bevy_tasks = { version = "0.13", default-features = false, features = ["multi-threaded", "async-io"] }
+futures-concurrency = "7.6.0"
 gray_matter = "0.2"
 pulldown-cmark = { version = "0.9" }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 tera = "1"
+thiserror = "1"
 toml = { version = "0.8", features = ["parse"] }

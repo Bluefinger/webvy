@@ -1,18 +1,48 @@
 use std::path::{Path, PathBuf};
 
-use bevy_ecs::component::Component;
+use bevy_ecs::{component::Component, system::Command};
 
 #[derive(Debug, Component, Clone)]
 pub struct FileName(pub String);
 
 #[derive(Debug, Component, Clone)]
-pub struct FilePath(pub PathBuf);
+pub struct FilePath(PathBuf);
+
+impl FilePath {
+    pub fn new(path: PathBuf) -> Self {
+        Self(path)
+    }
+}
+
+impl AsRef<Path> for FilePath {
+    fn as_ref(&self) -> &Path {
+        self.0.as_path()
+    }
+}
 
 #[derive(Debug, Component, Clone)]
-pub struct HtmlBody(pub String);
+pub struct HtmlBody(Box<str>);
+
+impl HtmlBody {
+    pub fn new(body: String) -> Self {
+        Self(body.into_boxed_str())
+    }
+}
+
+impl AsRef<str> for HtmlBody {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
 
 #[derive(Debug, Component, Clone)]
-pub struct SectionName(pub Box<str>);
+pub struct SectionName(Box<str>);
+
+impl AsRef<str> for SectionName {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
 
 #[derive(Debug, Component, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum PageType {
@@ -22,20 +52,20 @@ pub enum PageType {
     Post,
 }
 
-pub(crate) struct EnumeratedSections(PathBuf);
+pub(crate) struct EnumeratedSections(Box<str>);
 
 impl EnumeratedSections {
-    pub fn new(path: PathBuf) -> Self {
-        Self(path)
+    pub fn new(path: PathBuf) -> Option<Self> {
+        Some(Self(path.file_stem()?.to_str()?.into()))
     }
+}
 
-    pub fn into_page_type_bundles(self) -> Option<[(PageType, SectionName); 2]> {
-        let name: Box<str> = self.0.file_stem()?.to_str()?.into();
-
-        Some([
-            (PageType::Post, SectionName(name.clone())),
-            (PageType::Section, SectionName(name)),
-        ])
+impl Command for EnumeratedSections {
+    fn apply(self, world: &mut bevy_ecs::world::World) {
+        world.spawn_batch([
+            (PageType::Post, SectionName(self.0.clone())),
+            (PageType::Section, SectionName(self.0)),
+        ]);
     }
 }
 

@@ -20,6 +20,7 @@ use webvy_matterparser::Parser as FrontMatterParser;
 use crate::{
     app::{Load, Process, ProcessorApp},
     deferred::DeferredTask,
+    errors::ProcessorError,
     file::{FileName, FilePath, HtmlBody},
     files::read_all_from_directory,
     front_matter::{Date, Draft, Title},
@@ -61,14 +62,14 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
 
                             trace!("Spawning {}", page_path.display());
 
-                            Some((FilePath(page_path), MarkdownPost(content)))
+                            Some((FilePath::new(page_path), MarkdownPost(content)))
                         },
                     ));
                 });
 
                 scope.send(command_queue);
 
-                Ok::<(), std::io::Error>(())
+                Ok::<(), ProcessorError>(())
             })
             .detach();
     }
@@ -82,7 +83,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
 
         q_pages.par_iter().for_each(|(page, content, path)| {
             if let Some(mut markdown) = matter.parse(&content.0) {
-                trace!("Parsing markdown: {}", path.0.display());
+                trace!("Parsing markdown: {}", path.as_ref().display());
                 commands.command_scope(move |mut commands| {
                     commands.entity(page).insert((
                         MarkdownBody(markdown.take_content()),
@@ -90,7 +91,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                     ));
                 });
             } else {
-                error!("Couldn't parse page: {}", path.0.display());
+                error!("Couldn't parse page: {}", path.as_ref().display());
             }
         });
     }
@@ -105,10 +106,10 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
         info!("Parsing frontmatter from loaded markdown pages");
         q_markdown
             .iter()
-            .for_each(|(entity, front_matter, FilePath(path))| {
+            .for_each(|(entity, front_matter, path)| {
                 let mut post = commands.entity(entity);
 
-                front_matter.extract_from_path(&mut post, path);
+                front_matter.extract_from_path(&mut post, path.as_ref());
                 front_matter.extract(&mut post);
 
                 post.insert(MarkdownParsed);
@@ -127,7 +128,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
                 let mut html = String::new();
                 html::push_html(&mut html, parser);
                 par_commands.command_scope(move |mut commands| {
-                    commands.entity(entity).insert(HtmlBody(html));
+                    commands.entity(entity).insert(HtmlBody::new(html));
                 });
             });
     }

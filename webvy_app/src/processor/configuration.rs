@@ -39,40 +39,28 @@ impl ConfigurationProcessor {
 
         deferred
             .scoped_task(|ex| async move {
-                let sections = Self::read_first_level_directory(path.as_path())
-                    .await
-                    .unwrap();
-
-                let commands = sections
-                    .into_iter()
-                    .flat_map(EnumeratedSections::into_page_type_bundles)
-                    .fold(CommandQueue::default(), |mut queue, types| {
-                        queue.push(|world: &mut World| {
-                            world.spawn_batch(types);
-                        });
-
-                        queue
-                    });
-
-                ex.send(commands);
+                match Self::read_first_level_directory(path.as_path()).await {
+                    Ok(commands) => ex.send(commands),
+                    Err(err) => error!("Unable to read content directory: {}", err),
+                }
             })
             .detach();
     }
 
-    async fn read_first_level_directory(path: &Path) -> std::io::Result<Vec<EnumeratedSections>> {
+    async fn read_first_level_directory(path: &Path) -> std::io::Result<CommandQueue> {
         let mut entry = read_dir(path).await?;
 
-        let mut to_visit = Vec::new();
+        let to_visit = CommandQueue::default();
 
-        while let Some(entry) = entry.try_next().await? {
+        entry.try_fold(to_visit, |mut queue, entry| {
             let path = entry.path();
 
-            if path.is_dir() {
-                to_visit.push(EnumeratedSections::new(path));
+            if let Some(section) = path.is_dir().then(|| EnumeratedSections::new(path)).flatten() {
+                queue.push(section);
             }
-        }
 
-        Ok(to_visit)
+            Ok(queue)
+        }).await
     }
 
     fn init_config(config_path: Res<Self>, deferred: Res<DeferredTask>) {

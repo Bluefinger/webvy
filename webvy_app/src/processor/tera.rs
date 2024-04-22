@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use bevy_ecs::{
     component::Component,
     entity::{Entity, EntityHashMap},
-    query::With,
+    query::{With, Without},
     system::{Commands, In, IntoSystem, Query, Res, ResMut, Resource},
 };
 use bevy_tasks::Task;
@@ -38,28 +38,24 @@ impl TeraProcessor {
 
     fn index_templates(
         mut commands: Commands,
-        q_page_types: Query<(
-            Entity,
-            &PageType,
-            Option<&SectionName>,
-            Option<&TemplateName>,
-        )>,
+        q_page_types: Query<(Entity, &PageType, Option<&SectionName>), Without<TemplateName>>,
     ) {
         info!("Indexing templates");
-        for (page, page_type, section_name, template) in q_page_types.iter() {
-            if template.is_none() {
-                match page_type {
-                    PageType::Index | PageType::Page => {
-                        let path: PathBuf = [format!("{}.html", page_type)].into_iter().collect();
-                        trace!("Indexed template as {}", path.display());
-                        commands.entity(page).insert(TemplateName(path));
-                    }
-                    PageType::Section | PageType::Post => {
-                        let parent = section_name.unwrap();
-                        let path: PathBuf = [parent.0.as_ref().to_string(), format!("{}.html", page_type)].into_iter().collect();
-                        trace!("Indexed template as {}", path.display());
-                        commands.entity(page).insert(TemplateName(path));
-                    }
+        for (page, page_type, section_name) in q_page_types.iter() {
+            match page_type {
+                PageType::Index | PageType::Page => {
+                    let path: PathBuf = [format!("{}.html", page_type)].into_iter().collect();
+                    trace!("Indexed template as {}", path.display());
+                    commands.entity(page).insert(TemplateName(path));
+                }
+                PageType::Section | PageType::Post => {
+                    let parent = section_name.unwrap();
+                    let path: PathBuf =
+                        [parent.as_ref().to_string(), format!("{}.html", page_type)]
+                            .into_iter()
+                            .collect();
+                    trace!("Indexed template as {}", path.display());
+                    commands.entity(page).insert(TemplateName(path));
                 }
             }
         }
@@ -67,54 +63,46 @@ impl TeraProcessor {
 
     fn associate_pages_to_templates(
         mut commands: Commands,
-        q_pages: Query<(Entity, &FilePath, Option<&AssociatedPageType>)>,
-        q_page_types: Query<(Entity, &PageType)>,
+        q_pages: Query<(Entity, &FilePath), Without<AssociatedPageType>>,
+        q_page_types: Query<(Entity, &PageType, Option<&SectionName>)>,
     ) {
         info!("Associating pages to templates");
-        q_pages
-            .iter()
-            .filter_map(|(page, path, associated)| {
-                if associated.is_none() {
-                    Some((page, path))
+        q_pages.iter().for_each(|(page, path)| {
+            let dir = path.as_ref().parent().unwrap();
+            let dir = dir.to_str().unwrap();
+            let is_root = dir.is_empty();
+
+            let page_type = if !path.as_ref().ends_with("_index.md") {
+                if is_root {
+                    PageType::Page
                 } else {
-                    None
+                    PageType::Post
                 }
-            })
-            .for_each(|(page, path)| {
-                let dir = path.0.parent().unwrap();
-                let is_root = dir.to_str().is_some_and(str::is_empty);
+            } else if is_root {
+                PageType::Index
+            } else {
+                PageType::Section
+            };
 
-                let page_type = if !path.0.ends_with("_index.md") {
-                    if is_root {
-                        PageType::Page
+            q_page_types
+                .iter()
+                .find_map(|(page, &kind, section)| {
+                    if kind == page_type && section.is_some_and(|section| dir.contains(section.as_ref())) {
+                        Some(AssociatedPageType(page))
                     } else {
-                        PageType::Post
+                        None
                     }
-                } else if is_root {
-                    PageType::Index
-                } else {
-                    PageType::Section
-                };
-
-                q_page_types
-                    .iter()
-                    .find_map(|(page, &kind)| {
-                        if kind == page_type {
-                            Some(AssociatedPageType(page))
-                        } else {
-                            None
-                        }
-                    })
-                    .map_or_else(
-                        || {
-                            error!("{} doesn't exist. Maybe it hasn't been indexed?", page_type);
-                        },
-                        |associated_type| {
-                            trace!("{} indexed as {}", path.0.display(), page_type);
-                            commands.entity(page).insert(associated_type);
-                        },
-                    );
-            });
+                })
+                .map_or_else(
+                    || {
+                        error!("{} doesn't exist. Maybe it hasn't been indexed?", page_type);
+                    },
+                    |associated_type| {
+                        trace!("{} indexed as {}", path.as_ref().display(), page_type);
+                        commands.entity(page).insert(associated_type);
+                    },
+                );
+        });
     }
 
     fn populate_context(
@@ -125,7 +113,7 @@ impl TeraProcessor {
         for (page, content) in q_pages.iter_mut() {
             let context = contexts.0.entry(page).or_default();
 
-            context.insert("content", &content.0);
+            context.insert("content", content.as_ref());
         }
     }
 
@@ -143,7 +131,7 @@ impl TeraProcessor {
         q_pages
             .iter()
             .map(|(page, template_name, file_name, path)| {
-                let output_path = dir.join(path.0.with_file_name(&file_name.0));
+                let output_path = dir.join(path.as_ref().with_file_name(&file_name.0));
 
                 let template_name = q_page_types.get(template_name.0).unwrap();
 
