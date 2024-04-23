@@ -71,27 +71,28 @@ impl TeraProcessor {
             let dir = path.as_ref().parent().unwrap();
             let dir = dir.to_str().unwrap();
             let is_root = dir.is_empty();
+            let is_listing = path.as_ref().ends_with("_index.md");
 
-            let page_type = if !path.as_ref().ends_with("_index.md") {
-                if is_root {
-                    PageType::Page
-                } else {
-                    PageType::Post
-                }
-            } else if is_root {
-                PageType::Index
-            } else {
-                PageType::Section
+            let page_type = match (is_root, is_listing) {
+                (true, true) => PageType::Index,
+                (true, false) => PageType::Page,
+                (false, true) => PageType::Section,
+                (false, false) => PageType::Post,
             };
 
             q_page_types
                 .iter()
-                .find_map(|(page, &kind, section)| {
-                    if kind == page_type && section.is_some_and(|section| dir.contains(section.as_ref())) {
+                .find_map(|(page, kind, section)| match page_type {
+                    PageType::Index | PageType::Page if page_type.eq(kind) => {
                         Some(AssociatedPageType(page))
-                    } else {
-                        None
                     }
+                    PageType::Section | PageType::Post
+                        if page_type.eq(kind)
+                            && section.is_some_and(|section| dir.contains(section.as_ref())) =>
+                    {
+                        Some(AssociatedPageType(page))
+                    }
+                    _ => None,
                 })
                 .map_or_else(
                     || {
