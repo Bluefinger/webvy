@@ -30,7 +30,7 @@ impl ConfigurationProcessor {
 
     fn init_section_page_types(
         mut commands: Commands,
-        q_config: Query<&ContentDir, With<FileConfig>>,
+        q_config: Query<&InputDir, With<FileConfig>>,
         deferred: Res<DeferredTask>,
     ) {
         let path = q_config.single().path().to_path_buf();
@@ -85,7 +85,7 @@ impl ConfigurationProcessor {
                                         if let Some(content) =
                                             files.get("content").and_then(Value::as_str)
                                         {
-                                            file_config.insert(ContentDir::new(content));
+                                            file_config.insert(InputDir::new(content));
                                         }
 
                                         if let Some(output) =
@@ -121,9 +121,9 @@ impl ProcessorPlugin for ConfigurationProcessor {
 }
 
 #[derive(Debug, Component)]
-pub struct ContentDir(PathBuf);
+pub struct InputDir(PathBuf);
 
-impl ContentDir {
+impl InputDir {
     fn new(dir: impl Into<PathBuf>) -> Self {
         Self(dir.into())
     }

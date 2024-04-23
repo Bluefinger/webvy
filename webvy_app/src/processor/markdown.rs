@@ -27,7 +27,7 @@ use crate::{
     traits::{Extractor, ProcessorPlugin},
 };
 
-use super::configuration::{ContentDir, FileConfig};
+use super::configuration::{InputDir, FileConfig};
 
 pub struct MarkdownProcessor<T: Extractor> {
     _marker: PhantomData<T>,
@@ -41,7 +41,7 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
     }
 
     fn read_content_directory_task(
-        q_config: Query<&ContentDir, With<FileConfig>>,
+        q_config: Query<&InputDir, With<FileConfig>>,
         deferred: Res<DeferredTask>,
     ) {
         let path = q_config.single().path().to_path_buf();

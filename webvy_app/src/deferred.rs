@@ -1,6 +1,5 @@
 use std::{
-    future::Future,
-    sync::{atomic::AtomicU32, Arc},
+    future::Future, rc::Rc, sync::{atomic::AtomicU32, Arc}
 };
 
 use bevy_ecs::system::{CommandQueue, Resource};
@@ -32,13 +31,15 @@ impl DeferredTask {
     pub fn scoped_task<T: Send + 'static, I, F>(&self, task: I) -> Task<T>
     where
         F: Future<Output = T> + Send + 'static,
-        I: FnOnce(DeferredScope) -> F + Send + 'static,
+        I: FnOnce(Arc<DeferredScope>) -> F + Send + 'static,
     {
         let channel = self.channel.clone();
         let guard = DeferredGuard::new(self);
 
         IoTaskPool::get().spawn(async move {
-            let result = task(DeferredScope::new(channel)).await;
+            let scope = Arc::new(DeferredScope::new(channel));
+
+            let result = task(scope.clone()).await;
 
             drop(guard);
 
@@ -49,13 +50,15 @@ impl DeferredTask {
     pub fn scoped_task_local<T: 'static, I, F>(&self, task: I) -> Task<T>
     where
         F: Future<Output = T> + 'static,
-        I: FnOnce(DeferredScope) -> F + 'static,
+        I: FnOnce(Rc<DeferredScope>) -> F + 'static,
     {
         let channel = self.channel.clone();
         let guard = DeferredGuard::new(self);
 
         IoTaskPool::get().spawn_local(async move {
-            let result = task(DeferredScope::new(channel)).await;
+            let scope = Rc::new(DeferredScope::new(channel));
+
+            let result = task(scope.clone()).await;
 
             drop(guard);
 
@@ -98,7 +101,9 @@ pub struct DeferredScope {
 
 impl DeferredScope {
     fn new(channel: Sender<CommandQueue>) -> Self {
-        Self { channel }
+        Self {
+            channel,
+        }
     }
 
     pub fn send(&self, msg: CommandQueue) {
@@ -107,16 +112,17 @@ impl DeferredScope {
             .expect("Deferred channel should always be open and never full");
     }
 
-    pub fn spawn<T: Send + 'static>(
-        &self,
-        task: impl Future<Output = T> + Send + 'static,
-    ) -> Task<T> {
+    pub fn spawn<S: Send + 'static>(
+        self: &Arc<Self>,
+        task: impl Future<Output = S> + Send + 'static,
+    ) -> Task<S> {
         IoTaskPool::get().spawn(task)
     }
-}
 
-impl AsRef<DeferredScope> for DeferredScope {
-    fn as_ref(&self) -> &DeferredScope {
-        self
+    pub fn spawn_local<S: 'static>(
+        self: &Rc<Self>,
+        task: impl Future<Output = S> + 'static,
+    ) -> Task<S> {
+        IoTaskPool::get().spawn_local(task)
     }
 }
