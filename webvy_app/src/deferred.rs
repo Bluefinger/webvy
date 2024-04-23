@@ -1,5 +1,7 @@
 use std::{
-    future::Future, rc::Rc, sync::{atomic::AtomicU32, Arc}
+    future::Future,
+    rc::Rc,
+    sync::{atomic::AtomicU32, Arc},
 };
 
 use bevy_ecs::system::{CommandQueue, Resource};
@@ -33,12 +35,10 @@ impl DeferredTask {
         F: Future<Output = T> + Send + 'static,
         I: FnOnce(Arc<DeferredScope>) -> F + Send + 'static,
     {
-        let channel = self.channel.clone();
         let guard = DeferredGuard::new(self);
+        let scope = Arc::new(DeferredScope::new(self));
 
         IoTaskPool::get().spawn(async move {
-            let scope = Arc::new(DeferredScope::new(channel));
-
             let result = task(scope.clone()).await;
 
             drop(guard);
@@ -52,12 +52,10 @@ impl DeferredTask {
         F: Future<Output = T> + 'static,
         I: FnOnce(Rc<DeferredScope>) -> F + 'static,
     {
-        let channel = self.channel.clone();
         let guard = DeferredGuard::new(self);
+        let scope = Rc::new(DeferredScope::new(self));
 
         IoTaskPool::get().spawn_local(async move {
-            let scope = Rc::new(DeferredScope::new(channel));
-
             let result = task(scope.clone()).await;
 
             drop(guard);
@@ -100,10 +98,10 @@ pub struct DeferredScope {
 }
 
 impl DeferredScope {
-    fn new(channel: Sender<CommandQueue>) -> Self {
-        Self {
-            channel,
-        }
+    fn new(deferred: &DeferredTask) -> Self {
+        let channel = deferred.channel.clone();
+
+        Self { channel }
     }
 
     pub fn send(&self, msg: CommandQueue) {
@@ -113,14 +111,14 @@ impl DeferredScope {
     }
 
     pub fn spawn<S: Send + 'static>(
-        self: &Arc<Self>,
+        &self,
         task: impl Future<Output = S> + Send + 'static,
     ) -> Task<S> {
         IoTaskPool::get().spawn(task)
     }
 
     pub fn spawn_local<S: 'static>(
-        self: &Rc<Self>,
+        &self,
         task: impl Future<Output = S> + 'static,
     ) -> Task<S> {
         IoTaskPool::get().spawn_local(task)
