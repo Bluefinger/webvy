@@ -20,14 +20,13 @@ use webvy_matterparser::Parser as FrontMatterParser;
 use crate::{
     app::{Load, Process, ProcessorApp},
     deferred::DeferredTask,
-    errors::ProcessorError,
     file::{FileName, FilePath, HtmlBody},
     files::read_all_from_directory,
     front_matter::{Date, Draft, Title},
     traits::{Extractor, ProcessorPlugin},
 };
 
-use super::configuration::{InputDir, FileConfig};
+use super::configuration::{FileConfig, InputDir};
 
 pub struct MarkdownProcessor<T: Extractor> {
     _marker: PhantomData<T>,
@@ -52,24 +51,30 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
 
                 info!("Reading markdown content from disk");
 
-                let data = read_all_from_directory(path.as_path()).await?;
+                let data = read_all_from_directory(path.as_path())
+                    .await
+                    .into_iter()
+                    .filter_map(|res| match res {
+                        Ok(file) => Some(file),
+                        Err(err) => {
+                            error!("Error reading file: {}", err);
+
+                            None
+                        }
+                    })
+                    .scan(path, |origin, (page_path, content)| {
+                        let page_path = page_path.strip_prefix(origin).unwrap().to_path_buf();
+
+                        trace!("Spawning {}", page_path.display());
+
+                        Some((FilePath::new(page_path), MarkdownPost(content)))
+                    });
 
                 command_queue.push(move |world: &mut World| {
-                    world.spawn_batch(data.into_iter().scan(
-                        path,
-                        |origin, (page_path, content)| {
-                            let page_path = page_path.strip_prefix(origin).unwrap().to_path_buf();
-
-                            trace!("Spawning {}", page_path.display());
-
-                            Some((FilePath::new(page_path), MarkdownPost(content)))
-                        },
-                    ));
+                    world.spawn_batch(data);
                 });
 
                 scope.send(command_queue);
-
-                Ok::<(), ProcessorError>(())
             })
             .detach();
     }
@@ -104,16 +109,14 @@ impl<T: Extractor + Send + Sync> MarkdownProcessor<T> {
         >,
     ) {
         info!("Parsing frontmatter from loaded markdown pages");
-        q_markdown
-            .iter()
-            .for_each(|(entity, front_matter, path)| {
-                let mut post = commands.entity(entity);
+        q_markdown.iter().for_each(|(entity, front_matter, path)| {
+            let mut post = commands.entity(entity);
 
-                front_matter.extract_from_path(&mut post, path.as_ref());
-                front_matter.extract(&mut post);
+            front_matter.extract_from_path(&mut post, path.as_ref());
+            front_matter.extract(&mut post);
 
-                post.insert(MarkdownParsed);
-            });
+            post.insert(MarkdownParsed);
+        });
     }
 
     fn convert_markdown_to_html(

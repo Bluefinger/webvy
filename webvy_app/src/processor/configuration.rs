@@ -39,6 +39,7 @@ impl ConfigurationProcessor {
 
         deferred
             .scoped_task(|ex| async move {
+                info!("Enumerating content sections");
                 match Self::read_first_level_directory(path.as_path()).await {
                     Ok(commands) => ex.send(commands),
                     Err(err) => error!("Unable to read content directory: {}", err),

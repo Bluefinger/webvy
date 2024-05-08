@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::{component::Component, system::Command};
+use log::trace;
 
 #[derive(Debug, Component, Clone)]
 pub struct FileName(pub String);
@@ -62,6 +63,7 @@ impl EnumeratedSections {
 
 impl Command for EnumeratedSections {
     fn apply(self, world: &mut bevy_ecs::world::World) {
+        trace!("Enumerated section: {}", self.0);
         world.spawn_batch([
             (PageType::Post, SectionName(self.0.clone())),
             (PageType::Section, SectionName(self.0)),

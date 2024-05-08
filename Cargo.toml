@@ -36,3 +36,16 @@ serde = { version = "1", features = ["derive"] }
 tera = "1"
 thiserror = "1"
 toml = { version = "0.8", features = ["parse"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = "line-tables-only"
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+strip = true
+lto = "thin"

@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use bevy_tasks::{IoTaskPool, Task};
+use futures_concurrency::concurrent_stream::{ConcurrentStream, IntoConcurrentStream};
 use log::trace;
 use smol::{
     fs::{read_dir, read_to_string},
-    stream::{iter, StreamExt},
+    stream::StreamExt,
 };
 
 async fn find_all_files_in_directory(path: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -31,20 +31,11 @@ async fn find_all_files_in_directory(path: &Path) -> std::io::Result<Vec<PathBuf
 
 pub async fn read_all_from_directory(
     path: impl AsRef<Path>,
-) -> std::io::Result<Vec<(PathBuf, String)>> {
-    let io = IoTaskPool::get();
-
-    // Concurrently obtain files
-    let tasks = find_all_files_in_directory(path.as_ref())
-        .await?
-        .into_iter()
-        .map(|file| io.spawn(read_file(file)))
-        .collect::<Vec<Task<std::io::Result<(PathBuf, String)>>>>();
-
-    iter(tasks.into_iter())
-        .then(|task| task)
-        .try_collect()
-        .await
+) -> Vec<std::io::Result<(PathBuf, String)>> {
+    match find_all_files_in_directory(path.as_ref()).await {
+        Ok(files) => files.into_co_stream().map(read_file).collect().await,
+        Err(e) => vec![Err(e)],
+    }
 }
 
 async fn read_file(file: PathBuf) -> std::io::Result<(PathBuf, String)> {
